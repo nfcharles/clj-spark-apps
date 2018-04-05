@@ -262,12 +262,15 @@
 (defn inverse-document-frequency [sc rdds]
   (-term-doc-freq sc (count rdds) rdds))
 
+(defn fname [prefix idx]
+  (format "%s/rdd-%d" prefix idx))
+
 (defn save [output rdds]
-  (doseq [rdd rdds
-          i (range (count rdds))]
-    (let [path (format "%s/foo-%d/" output (System/currentTimeMillis))]
+  (doseq [[rdd i] (map list rdds (range (count rdds)))]
+    (let [path (fname output i)]
+      (println (format "***** SAVING RDD[%s] %d *****" rdd i))
       (->> rdd
-          #_(spark/repartition 1)
+          (spark/repartition 1)
           (spark/save-as-text-file path)))))
 
 (defn compute-tf-idf [tfs idf]
