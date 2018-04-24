@@ -155,7 +155,13 @@
 ;; -   PARSERS   -
 ;; ---------------
 
-;; Functions for unpacking tuple2/optional sequences
+(declare parse-tup)
+(declare parse-seq)
+(declare parse-opt)
+
+(defn noop [x]
+  ;(println (format "PASSTHRU -> %s" x))
+  x)
 
 ;; # TODO: add pull request to sparkling to add other join support (full join)
 (defn joiner [acc rdd]
@@ -170,37 +176,36 @@
 (defn opt? [x]
   (= x Optional))
 
-(defn parse-tup [x parser]
+(defn unpack [x]
+  (let [t (type x)]
+    (cond
+      (tup? t) (parse-tup x)
+      (seq? x) (parse-seq x)
+      (opt? t) (parse-opt x)
+      :else    (noop x))))
+
+;; Functions for unpacking tuple2/optional sequences
+
+(defn parse-tup [x]
   ;(println (format "PARSE TUPLE -> %s" x))
   (let [k (._1 x)
         v (._2 x)]
     ;(println (format "KEY=%s" k))
     ;(println (format "VAL=%s" v))
-    [(parser k) (parser v)]))
+    [(unpack k) (unpack v)]))
 
-(defn parse-seq [x parser]
+(defn parse-seq [x]
   ;(println (format "PARSE SEQUENCE -> %s" x))
   (loop [xs x
          acc []]
     (if-let [entry (first xs)]
-      (recur (rest xs) (conj acc (parser entry)))
+      (recur (rest xs) (conj acc (unpack entry)))
       acc)))
 
-(defn parse-opt [x parser]
+(defn parse-opt [x]
   ;(println (format "PARSE OPTIONAL -> %s" x))
-  [(parser (get-opt-val x))])
+  [(unpack (get-opt-val x))])
 
-(defn noop [x]
-  ;(println (format "PASSTHRU -> %s" x))
-  x)
-
-(defn unpack [x]
-  (let [t (type x)]
-    (cond
-      (tup? t) (parse-tup x unpack)
-      (seq? x) (parse-seq x unpack)
-      (opt? t) (parse-opt x unpack)
-      :else    (noop x))))
 
 ;; -------------------
 ;; -     TF-IDF      -
@@ -266,12 +271,13 @@
   (format "%s/rdd-%d" prefix idx))
 
 (defn save [output rdds]
-  (doseq [[rdd i] (map list rdds (range (count rdds)))]
-    (let [path (fname output i)]
-      (println (format "***** SAVING RDD[%s] %d *****" rdd i))
-      (->> rdd
-          (spark/repartition 1)
-          (spark/save-as-text-file path)))))
+  (let [prefix (format "%s/%d" output (System/currentTimeMillis))]
+    (doseq [[rdd i] (map list rdds (range (count rdds)))]
+      (let [path (fname prefix i)]
+        (println (format "***** SAVING RDD[%s] %d *****" rdd i))
+        (->> rdd
+            (spark/repartition 1)
+            (spark/save-as-text-file path))))))
 
 (defn compute-tf-idf [tfs idf]
   (loop [xs tfs
